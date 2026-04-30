@@ -1,0 +1,38 @@
+# 🔹 Entorno virtual
+venv/
+.venv/
+env/
+
+# 🔹 Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 🔹 Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# 🔹 Base de datos
+*.db
+*.sqlite3
+
+# 🔹 Datos del proyecto (NO subir rostros)
+data/fotos/
+
+# 🔹 Logs
+*.log
+
+# 🔹 Configuración local
+.env
+
+# 🔹 IDEs
+.vscode/
+.idea/
+
+# 🔹 Archivos temporales
+*.tmp
+*.bak
+
+# 🔹 Jupyter (por si acaso)
+.ipynb_checkpoints/
