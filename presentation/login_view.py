@@ -18,63 +18,82 @@ class LoginView:
         self._build_ui()
 
     def _build_ui(self):
-        card = tk.Frame(self.root, bg="white", bd=1, relief="solid")
-        card.place(relx=0.5, rely=0.5, anchor="center", width=320, height=380)
+        # 1. Creamos una ÚNICA tarjeta centrada
+        self.card = tk.Frame(self.root, bg="white", bd=1, relief="solid")
+        self.card.place(relx=0.5, rely=0.5, anchor="center", width=360, height=520)
 
-        self._draw_lock_icon(card)
+        # 2. Dibujamos el icono dentro de self.card
+        self._draw_lock_icon(self.card)
 
+        # 3. Título del sistema
         tk.Label(
-            card,
-            text="Sistema de Asistencia",
-            font=("Georgia", 17),
-            bg="white", fg="#1a1a1a"
-        ).pack(pady=(10, 2))
+            self.card, text="Sistema de Asistencia",
+            font=("Georgia", 17, "bold"), bg="white", fg="#1a1a1a"
+        ).pack(pady=(10, 20))
 
+        # 4. Campo de Correo Electrónico
         tk.Label(
-            card,
-            text="Ingrese su PIN para continuar",
-            font=("Arial", 10),
-            bg="white", fg="#666666"
-        ).pack(pady=(0, 18))
+            self.card, text="Correo Electrónico:", font=("Arial", 9, "bold"), 
+            bg="white", fg="#333333"
+        ).pack(anchor="w", padx=40)
+        
+        self.correo_var = tk.StringVar()
+        self.correo_entry = tk.Entry(
+            self.card, textvariable=self.correo_var, font=("Arial", 11), 
+            relief="solid", bd=1
+        )
+        self.correo_entry.pack(fill="x", padx=40, ipady=7, pady=(2, 15))
 
+        # 5. Campo de PIN
         tk.Label(
-            card,
-            text="PIN:",
-            font=("Arial", 10, "bold"),
-            bg="white", fg="#1a1a1a",
-            anchor="w"
-        ).pack(fill="x", padx=30)
+            self.card, text="PIN de Seguridad:", font=("Arial", 9, "bold"), 
+            bg="white", fg="#333333"
+        ).pack(anchor="w", padx=40)
 
         self.pin_var = tk.StringVar()
         self.entry = tk.Entry(
-            card,
-            textvariable=self.pin_var,
-            font=("Arial", 12),
-            relief="solid", bd=1,
-            fg="#333333",
+            self.card, textvariable=self.pin_var, font=("Arial", 11), 
+            relief="solid", bd=1, show="●"
         )
-        self.entry.pack(fill="x", padx=30, ipady=8, pady=(4, 16))
+        self.entry.pack(fill="x", padx=40, ipady=7, pady=(2, 25))
+        
+        # Configuramos el foco inicial y el Enter
         self.entry.bind("<Return>", lambda e: self._ingresar())
-        self.entry.focus_set()
-
-        self._add_placeholder(self.entry, "Ingrese PIN")
-
+        
+        # 6. Botón de Ingresar (ahora sí visible en self.card)
         tk.Button(
-            card,
-            text="Ingresar",
-            font=("Arial", 12, "bold"),
-            bg="#4F79A7", fg="white",
+            self.card, text="INGRESAR", font=("Arial", 11, "bold"),
+            bg="#4F79A7", fg="white", relief="flat", cursor="hand2",
             activebackground="#3a5f8a", activeforeground="white",
-            relief="flat", cursor="hand2",
             command=self._ingresar
-        ).pack(fill="x", padx=30, ipady=10)
+        ).pack(fill="x", padx=40, ipady=10)
 
-        tk.Label(
-            card,
-            text="PIN de prueba: 1234",
-            font=("Arial", 9),
-            bg="white", fg="#999999"
-        ).pack(pady=(14, 0))
+        # 7. Enlace para registro
+        btn_reg = tk.Label(
+            self.card, text="¿No tienes cuenta? Regístrate aquí", 
+            font=("Arial", 9, "underline"), bg="white", fg="#4F79A7", cursor="hand2"
+        )
+        btn_reg.pack(pady=20)
+        btn_reg.bind("<Button-1>", lambda e: self._ir_a_registro())
+
+    def _ir_a_registro(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        # Fíjate bien en las mayúsculas aquí:
+        from presentation.profesor_register_view import ProfesorRegisterView
+        ProfesorRegisterView(self.root, on_back=lambda: self._volver_al_login())
+
+    def _volver_al_login(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.__init__(self.root, self.on_success)
+
+#        tk.Label(
+#            card,
+#            text="PIN de prueba: 1234",
+#            font=("Arial", 9),
+#            bg="white", fg="#999999"
+#        ).pack(pady=(14, 0))
 
     def _draw_lock_icon(self, parent):
         SIZE = 72
@@ -122,17 +141,28 @@ class LoginView:
         entry.bind("<FocusOut>", on_focus_out)
 
     def _ingresar(self):
-        if self._placeholder_active:
-            messagebox.showwarning("Atención", "Ingrese su PIN.")
+        correo = self.correo_var.get().strip()
+        pin = self.pin_var.get().strip()
+
+        if not correo or not pin:
+            messagebox.showwarning("Atención", "Ingrese correo y PIN.")
             return
 
-        pin = self.pin_var.get().strip()
-        if pin == PIN_CORRECTO:
+        from infrastructure.database.db_manager import DatabaseManager
+        db = DatabaseManager()
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Validamos ambos campos
+        cursor.execute("SELECT id, nombre FROM profesores WHERE correo = ? AND pin = ?", (correo, pin))
+        resultado = cursor.fetchone()
+        conn.close()
+
+        if resultado:
+            # resultado[0] es el ID, resultado[1] es el Nombre
+            print(f"Bienvenido Profesor {resultado[1]}")
             if self.on_success:
-                self.on_success()
+                # IMPORTANTE: Pasamos los datos del profesor al éxito
+                self.on_success(resultado[0], resultado[1]) 
         else:
-            messagebox.showerror("Error", "PIN incorrecto. Intente nuevamente.")
-            self.pin_var.set("")
-            self.entry.config(show="", fg="#aaaaaa")
-            self.entry.insert(0, "Ingrese PIN")
-            self._placeholder_active = True
+            messagebox.showerror("Error", "Correo o PIN incorrectos.")

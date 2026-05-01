@@ -18,20 +18,25 @@ def main():
     y = (sh - 600) // 2
     root.geometry(f"900x600+{x}+{y}")
 
-    def mostrar_login():
-        # Limpiar ventana
+    def mostrar_panel(profesor_id, nombre_profesor): # <-- Debe tener estos dos
         for widget in root.winfo_children():
             widget.destroy()
+    
+        from presentation.main_window import MainWindow
+        # Pasamos los datos a la MainWindow
+        MainWindow(root, profesor_id, nombre_profesor, on_logout=mostrar_login)
+
+    def mostrar_login():
+        for widget in root.winfo_children():
+            widget.destroy()
+    
+        from presentation.login_view import LoginView
+        # Aquí conectamos el éxito con la función de arriba
         LoginView(root, on_success=mostrar_panel)
 
-    def mostrar_panel():
-        # Limpiar ventana
-        for widget in root.winfo_children():
-            widget.destroy()
-        MainWindow(root)
-
-    mostrar_login()
-    root.mainloop()
+    # --- LAS DOS LÍNEAS QUE FALTABAN ---
+    mostrar_login()  # 1. Llamamos a la función para cargar el login al inicio
+    root.mainloop()  # 2. Esto mantiene la ventana abierta y escuchando clics
 
 
 if __name__ == "__main__":
