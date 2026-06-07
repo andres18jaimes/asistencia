@@ -15,7 +15,7 @@ class MainWindow:
 
         self.root.title(f"Asistencia - Prof. {self.nombre_profesor}")
         self.root.configure(bg="#F5F6FA")
-        self.root.attributes('-zoomed', True)
+        self.root.state('zoomed')
 
         self.iconos = {}
         self._preparar_iconos()
@@ -281,11 +281,36 @@ class MainWindow:
             messagebox.showerror("Error", f"No se pudo abrir la toma de asistencia:\n{e}")
 
     def _action_ver_asistencias(self, curso_id):
-        messagebox.showinfo("Próximamente", f"Ver asistencias del curso {curso_id}")
+        self._limpiar()
+        try:
+            from infrastructure.database.db_manager import DatabaseManager
+            from presentation.history_view import HistoryView
+
+            db = DatabaseManager()
+            HistoryView(
+                parent=self.main_container,
+                curso_id=curso_id,
+                db_manager=db,
+                on_volver=self._show_cursos
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir el módulo Ver Asistencias:\n{e}")
 
     def _action_reportes(self, curso_id):
-        messagebox.showinfo("Próximamente", f"Reporte del curso {curso_id}")
+        self._limpiar()
+        try:
+            from infrastructure.database.db_manager import DatabaseManager
+            from presentation.report_view import ReportView
 
+            db = DatabaseManager()
+            ReportView(
+                parent=self.main_container,
+                curso_id=curso_id,
+                db_manager=db,
+                on_volver=self._show_cursos
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir el módulo de Reportes:\n{e}")
     # ── Utilidades ───────────────────────────────────────────────────────────
 
     def _limpiar(self):

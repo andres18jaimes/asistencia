@@ -1,325 +1,161 @@
-"""
-presentation/register_view.py
-
-Vista de Registro de Estudiante.
-Fiel al mockup: panel izquierdo con datos, panel derecho con captura facial.
-"""
-
-import tkinter as tk
+import customtkinter as ctk
 from tkinter import ttk, messagebox
 from typing import Callable, Optional
 
-from application.student_service import StudentService
-from application.camera_service import CameraService
+# Paleta de colores consistente (Slate & Emerald)
+COLOR_FONDO = "#0f172a"
+COLOR_PANEL = "#1e293b"
+COLOR_ACCENTO = "#10b981"  # Verde para Guardar
+COLOR_PELIGRO = "#ef4444"  # Rojo para Eliminar
+COLOR_BOTON_NAV = "#3b82f6" # Azul para captura
 
-
-# ── Paleta de colores (consistente con main_window) ─────────────────────────
-AZUL_HEADER  = "#4A7BA7"
-AZUL_BOTON   = "#5B9BD5"
-VERDE        = "#4CAF50"
-ROJO         = "#E53935"
-GRIS_FONDO   = "#F0F0F0"
-GRIS_PANEL   = "#FFFFFF"
-GRIS_BORDE   = "#CCCCCC"
-GRIS_ICONO   = "#AAAAAA"
-TEXTO_DARK   = "#333333"
-TEXTO_LABEL  = "#555555"
-FUENTE       = "Courier"          # igual que el mockup (monospace)
-
-
-class RegisterView:
-    """
-    Ventana / frame de registro de estudiante.
-
-    Parámetros
-    ----------
-    parent : tk.Widget
-        Contenedor padre (Frame o Toplevel).
-    student_service : StudentService
-        Servicio de aplicación para operar sobre estudiantes.
-    profesor_id : int
-        Id del profesor actualmente autenticado.
-    on_volver : Callable
-        Callback que se llama al presionar "← Volver".
-    """
-
+class RegisterView(ctk.CTkFrame):
     def __init__(
         self,
-        parent: tk.Widget,
-        student_service: StudentService,
+        parent: ctk.CTk,
+        student_service,
         profesor_id: int,
         on_volver: Callable,
     ):
-        self.parent          = parent
-        self.service         = student_service
-        self.profesor_id     = profesor_id
-        self.on_volver       = on_volver
-        self.camera_service  = CameraService()
+        # Heredamos de CTKFrame
+        super().__init__(parent, fg_color=COLOR_FONDO)
+        
+        self.parent = parent
+        self.service = student_service
+        self.profesor_id = profesor_id
+        self.on_volver = on_volver
+        
+        # Intentamos importar tu CameraService (asumo que se maneja igual interno)
+        try:
+            from application.camera_service import CameraService
+            self.camera_service = CameraService()
+        except Exception:
+            self.camera_service = None
 
         # Estado interno
-        self._student_id_actual: Optional[int] = None   # id del estudiante recién guardado
+        self._student_id_actual: Optional[int] = None
         self._encoding_capturado: Optional[bytes] = None
 
-        # Construir UI
-        self._build()
+        self.pack(fill="both", expand=True)
+        self._build_ui()
         self._cargar_cursos()
 
-    # ── Construcción de la UI ────────────────────────────────────────────────
+    def _build_ui(self):
+        # ── HEADER ──
+        self.header = ctk.CTkFrame(self, height=70, corner_radius=0, fg_color=COLOR_PANEL)
+        self.header.pack(fill="x", side="top")
 
-    def _build(self):
-        # Frame raíz de esta vista (ocupa todo el padre)
-        self.frame = tk.Frame(self.parent, bg=GRIS_FONDO)
-        self.frame.pack(fill="both", expand=True)
-
-        self._build_header()
-        self._build_body()
-
-    def _build_header(self):
-        header = tk.Frame(self.frame, bg=AZUL_HEADER, height=52)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-
-        btn_volver = tk.Button(
-            header,
-            text="← Volver",
-            font=(FUENTE, 11, "bold"),
-            bg=AZUL_HEADER,
-            fg="white",
-            bd=0,
-            activebackground="#3a6a96",
-            activeforeground="white",
-            cursor="hand2",
-            padx=14,
-            command=self._volver,
+        self.btn_volver = ctk.CTkButton(
+            self.header, text="← Volver", width=100, fg_color="transparent",
+            hover_color="#334155", font=("Segoe UI", 14, "bold"), command=self._volver
         )
-        btn_volver.pack(side="left", pady=10)
+        self.btn_volver.pack(side="left", padx=20, pady=15)
 
-        tk.Label(
-            header,
-            text="Registro de Estudiante",
-            font=(FUENTE, 14, "bold"),
-            bg=AZUL_HEADER,
-            fg="white",
-        ).pack(side="left", pady=10)
-
-    def _build_body(self):
-        body = tk.Frame(self.frame, bg=GRIS_FONDO)
-        body.pack(fill="both", expand=True, padx=30, pady=24)
-
-        # Dos columnas
-        self._build_panel_datos(body)
-        self._build_panel_camara(body)
-
-    # ── Panel izquierdo: datos del estudiante ────────────────────────────────
-
-    def _build_panel_datos(self, parent):
-        panel = tk.Frame(parent, bg=GRIS_PANEL, bd=1, relief="solid")
-        panel.pack(side="left", fill="both", expand=True, padx=(0, 12))
-
-        tk.Label(
-            panel,
-            text="Datos del Estudiante",
-            font=(FUENTE, 13, "bold"),
-            bg=GRIS_PANEL,
-            fg=TEXTO_DARK,
-        ).pack(anchor="w", padx=20, pady=(18, 4))
-
-        ttk.Separator(panel, orient="horizontal").pack(fill="x", padx=20, pady=(0, 16))
-
-        # Nombre
-        self._campo(panel, "Nombre Completo:", "Ej: Juan Pérez López", "_entry_nombre")
-
-        # Identificación
-        self._campo(panel, "Identificación:", "Ej: 12345678", "_entry_identificacion")
-
-        # Curso / Asignatura (combo)
-        tk.Label(
-            panel,
-            text="Curso/Asignatura:",
-            font=(FUENTE, 10),
-            bg=GRIS_PANEL,
-            fg=TEXTO_LABEL,
-        ).pack(anchor="w", padx=20, pady=(10, 4))
-
-        self._combo_curso = ttk.Combobox(
-            panel,
-            state="readonly",
-            font=(FUENTE, 10),
-            width=36,
+        self.titulo = ctk.CTkLabel(
+            self.header, text="Registro de Nuevos Estudiantes", 
+            font=("Segoe UI", 20, "bold"), text_color="#f8fafc"
         )
-        self._combo_curso.pack(anchor="w", padx=20)
-        self._combo_curso.set("Selecciona un curso…")
+        self.titulo.pack(side="left", padx=10)
 
-        # Botones
-        btn_frame = tk.Frame(panel, bg=GRIS_PANEL)
-        btn_frame.pack(anchor="w", padx=20, pady=24)
+        # ── CUERPO (Dos Columnas Modernas) ──
+        self.body = ctk.CTkFrame(self, fg_color="transparent")
+        self.body.pack(fill="both", expand=True, padx=40, pady=30)
 
-        tk.Button(
-            btn_frame,
-            text="💾  Guardar",
-            font=(FUENTE, 11, "bold"),
-            bg=VERDE,
-            fg="white",
-            bd=0,
-            padx=18,
-            pady=10,
-            cursor="hand2",
-            activebackground="#388E3C",
-            activeforeground="white",
-            command=self._guardar,
-        ).pack(side="left", padx=(0, 12))
+        # Configuramos columnas responsivas 50% y 50%
+        self.body.grid_columnconfigure(0, weight=1, uniform="col")
+        self.body.grid_columnconfigure(1, weight=1, uniform="col")
+        self.body.grid_rowconfigure(0, weight=1)
 
-        tk.Button(
-            btn_frame,
-            text="🗑  Eliminar",
-            font=(FUENTE, 11, "bold"),
-            bg=ROJO,
-            fg="white",
-            bd=0,
-            padx=18,
-            pady=10,
-            cursor="hand2",
-            activebackground="#B71C1C",
-            activeforeground="white",
-            command=self._eliminar,
-        ).pack(side="left")
+        # PANEL IZQUIERDO: Formulario de Datos
+        self.panel_datos = ctk.CTkFrame(self.body, fg_color=COLOR_PANEL, corner_radius=15, border_width=1, border_color="#334155")
+        self.panel_datos.grid(row=0, column=0, padx=(0, 15), sticky="nsew", ipadx=20, ipady=20)
 
-        # Etiqueta de estado (feedback al usuario)
-        self._lbl_estado = tk.Label(
-            panel,
-            text="",
-            font=(FUENTE, 9),
-            bg=GRIS_PANEL,
-            fg=VERDE,
-            wraplength=320,
-            justify="left",
+        ctk.CTkLabel(self.panel_datos, text="Formulario de Inscripción", font=("Segoe UI", 18, "bold"), text_color="#f8fafc").pack(anchor="w", padx=30, pady=(25, 5))
+        
+        # Campos de Texto Estilizados
+        self._entry_nombre = self._crear_campo(self.panel_datos, "Nombre Completo", "Ingrese nombre y apellidos")
+        self._entry_identificacion = self._crear_campo(self.panel_datos, "Documento de Identidad", "Ej: 10023456")
+
+        # Selector de Curso (Combo moderno)
+        ctk.CTkLabel(self.panel_datos, text="Asignar a Curso / Grupo:", font=("Segoe UI", 13, "bold"), text_color="#94a3b8").pack(anchor="w", padx=30, pady=(15, 5))
+        self._combo_curso = ctk.CTkComboBox(self.panel_datos, state="readonly", font=("Segoe UI", 13), fg_color="#0f172a", width=340, height=40)
+        self._combo_curso.pack(anchor="w", padx=30, pady=(0, 15))
+
+        # Botones de Acción inferiores
+        self.btn_frame = ctk.CTkFrame(self.panel_datos, fg_color="transparent")
+        self.btn_frame.pack(anchor="w", padx=30, pady=25)
+
+        self.btn_guardar = ctk.CTkButton(
+            self.btn_frame, text="💾  Guardar Datos", font=("Segoe UI", 13, "bold"),
+            fg_color=COLOR_ACCENTO, hover_color="#059669", height=42, command=self._guardar
         )
-        self._lbl_estado.pack(anchor="w", padx=20, pady=(0, 12))
+        self.btn_guardar.pack(side="left", padx=(0, 15))
 
-    def _campo(self, parent, label_txt, placeholder, attr_name):
-        """Crea un label + entry con placeholder y lo guarda en self.<attr_name>."""
-        tk.Label(
-            parent,
-            text=label_txt,
-            font=(FUENTE, 10),
-            bg=GRIS_PANEL,
-            fg=TEXTO_LABEL,
-        ).pack(anchor="w", padx=20, pady=(10, 4))
-
-        entry = tk.Entry(
-            parent,
-            font=(FUENTE, 10),
-            fg=GRIS_ICONO,
-            bd=1,
-            relief="solid",
-            width=38,
+        self.btn_eliminar = ctk.CTkButton(
+            self.btn_frame, text="🗑  Eliminar", font=("Segoe UI", 13, "bold"),
+            fg_color=COLOR_PELIGRO, hover_color="#dc2626", height=42, command=self._eliminar
         )
-        entry.insert(0, placeholder)
-        entry.pack(anchor="w", padx=20)
+        self.btn_eliminar.pack(side="left")
 
-        # Comportamiento placeholder
-        def _on_focus_in(e, ent=entry, ph=placeholder):
-            if ent.get() == ph:
-                ent.delete(0, "end")
-                ent.config(fg=TEXTO_DARK)
+        self._lbl_estado = ctk.CTkLabel(self.panel_datos, text="", font=("Segoe UI", 13))
+        self._lbl_estado.pack(anchor="w", padx=30, pady=5)
 
-        def _on_focus_out(e, ent=entry, ph=placeholder):
-            if not ent.get():
-                ent.insert(0, ph)
-                ent.config(fg=GRIS_ICONO)
 
-        entry.bind("<FocusIn>",  _on_focus_in)
-        entry.bind("<FocusOut>", _on_focus_out)
+        # PANEL DERECHO: Captura Biométrica Facial
+        self.panel_biometrico = ctk.CTkFrame(self.body, fg_color=COLOR_PANEL, corner_radius=15, border_width=1, border_color="#334155")
+        self.panel_biometrico.grid(row=0, column=1, padx=(15, 0), sticky="nsew", ipadx=20, ipady=20)
 
-        setattr(self, attr_name, entry)
+        ctk.CTkLabel(self.panel_biometrico, text="Escaneo Biométrico", font=("Segoe UI", 18, "bold"), text_color="#f8fafc").pack(anchor="w", padx=30, pady=(25, 20))
 
-    # ── Panel derecho: captura facial ────────────────────────────────────────
-
-    def _build_panel_camara(self, parent):
-        panel = tk.Frame(parent, bg=GRIS_PANEL, bd=1, relief="solid", width=340)
-        panel.pack(side="left", fill="both", expand=True)
-        panel.pack_propagate(False)
-
-        tk.Label(
-            panel,
-            text="Captura Facial",
-            font=(FUENTE, 13, "bold"),
-            bg=GRIS_PANEL,
-            fg=TEXTO_DARK,
-        ).pack(anchor="w", padx=20, pady=(18, 4))
-
-        ttk.Separator(panel, orient="horizontal").pack(fill="x", padx=20, pady=(0, 12))
-
-        # Área de preview
-        self._canvas_preview = tk.Canvas(
-            panel,
-            bg="#E8E8E8",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=GRIS_BORDE,
-            width=280,
-            height=240,
+        # El área de previsualización (Canvas estilizado para que cuadre con el fondo oscuro)
+        self._canvas_preview = ctk.CTkCanvas(
+            self.panel_biometrico, bg="#111827", bd=0, highlightthickness=1, 
+            highlightbackground="#334155", width=320, height=260
         )
-        self._canvas_preview.pack(padx=20, pady=(0, 0))
+        self._canvas_preview.pack(padx=30, pady=5)
         self._dibujar_icono_usuario()
 
-        # Botón capturar
-        tk.Button(
-            panel,
-            text="📷  Capturar Rostro",
-            font=(FUENTE, 11, "bold"),
-            bg=AZUL_BOTON,
-            fg="white",
-            bd=0,
-            padx=18,
-            pady=10,
-            cursor="hand2",
-            activebackground="#3a7ab5",
-            activeforeground="white",
-            command=self._capturar,
-        ).pack(fill="x", padx=20, pady=16)
-
-        self._lbl_camara_estado = tk.Label(
-            panel,
-            text="",
-            font=(FUENTE, 9),
-            bg=GRIS_PANEL,
-            fg=TEXTO_LABEL,
+        # Botón para activar cámara
+        self.btn_camara = ctk.CTkButton(
+            self.panel_biometrico, text="📷  Escanear Rostro de Estudiante", font=("Segoe UI", 14, "bold"),
+            fg_color=COLOR_BOTON_NAV, hover_color="#2563eb", height=45, width=320, corner_radius=10, command=self._capturar
         )
-        self._lbl_camara_estado.pack(padx=20)
+        self.btn_camara.pack(padx=30, pady=20)
+
+        self._lbl_camara_estado = ctk.CTkLabel(self.panel_biometrico, text="", font=("Segoe UI", 13), text_color="#94a3b8")
+        self._lbl_camara_estado.pack(padx=30)
+
+    def _crear_campo(self, parent, label_text, placeholder):
+        """Helper para generar campos con estilo de forma limpia y sin placeholders manuales engorrosos"""
+        ctk.CTkLabel(parent, text=f"{label_text}:", font=("Segoe UI", 13, "bold"), text_color="#94a3b8").pack(anchor="w", padx=30, pady=(15, 5))
+        entry = ctk.CTkEntry(
+            parent, placeholder_text=placeholder, font=("Segoe UI", 13),
+            fg_color="#0f172a", border_color="#334155", width=340, height=40, corner_radius=8
+        )
+        entry.pack(anchor="w", padx=30)
+        return entry
 
     def _dibujar_icono_usuario(self):
-        """Dibuja el ícono genérico de persona en el canvas."""
+        """Mantiene el ícono vectorizado pero adaptado a la paleta oscura"""
         c = self._canvas_preview
         c.delete("all")
-        cx, cy = 140, 120
+        cx, cy = 160, 130
         # Cabeza
-        c.create_oval(cx-32, cy-72, cx+32, cy-8,
-                      fill=GRIS_ICONO, outline=GRIS_ICONO)
-        # Cuerpo (arco)
-        c.create_arc(cx-56, cy+10, cx+56, cy+110,
-                     start=0, extent=180,
-                     fill=GRIS_ICONO, outline=GRIS_ICONO)
+        c.create_oval(cx-35, cy-65, cx+35, cy, fill="#4b5563", outline="#4b5563")
+        # Cuerpo
+        c.create_arc(cx-65, cy+15, cx+65, cy+135, start=0, extent=180, fill="#4b5563", outline="#4b5563")
 
-    # ── Acciones ─────────────────────────────────────────────────────────────
+    # ── MÉTODOS DE NEGOCIO RE-ACOPLADOS ──
 
     def _guardar(self):
         nombre = self._entry_nombre.get().strip()
         identificacion = self._entry_identificacion.get().strip()
 
-        # Ignorar placeholders
-        PLACEHOLDER_NOMBRE = "Ej: Juan Pérez López"
-        PLACEHOLDER_ID     = "Ej: 12345678"
-        if nombre == PLACEHOLDER_NOMBRE:
-            nombre = ""
-        if identificacion == PLACEHOLDER_ID:
-            identificacion = ""
-
         if not nombre:
             self._set_estado("⚠ El nombre es obligatorio.", error=True)
             return
 
-        # Obtener id_curso seleccionado
+        # Conseguir ID del curso seleccionado del combo
         id_curso = self._get_id_curso_seleccionado()
 
         exito, mensaje, student_id = self.service.registrar_estudiante(
@@ -336,33 +172,31 @@ class RegisterView:
 
     def _eliminar(self):
         if self._student_id_actual is None:
-            self._set_estado("⚠ Primero guarda un estudiante.", error=True)
+            self._set_estado("⚠ Primero guarde o seleccione un estudiante.", error=True)
             return
 
-        confirmar = messagebox.askyesno(
-            "Confirmar eliminación",
-            "¿Estás seguro de que deseas eliminar este estudiante?",
-        )
-        if not confirmar:
-            return
+        confirmar = messagebox.askyesno("Confirmación", "¿Desea eliminar permanentemente a este estudiante?")
+        if not confirmar: return
 
         exito, mensaje = self.service.eliminar_estudiante(self._student_id_actual)
         if exito:
             self._student_id_actual = None
             self._encoding_capturado = None
-            self._limpiar_formulario()
+            self._entry_nombre.delete(0, "end")
+            self._entry_identificacion.delete(0, "end")
+            self._dibujar_icono_usuario()
+            self._lbl_camara_estado.configure(text="")
             self._set_estado(f"✓ {mensaje}", error=False)
         else:
             self._set_estado(f"✗ {mensaje}", error=True)
 
     def _capturar(self):
-        """Llama al CameraService para capturar el encoding facial."""
         if self._student_id_actual is None:
-            self._set_estado("⚠ Guarda los datos primero antes de capturar el rostro.", error=True)
+            self._set_estado("⚠ Guarde los datos del estudiante antes del escaneo facial.", error=True)
             return
 
-        self._lbl_camara_estado.config(text="Abriendo cámara…", fg=TEXTO_LABEL)
-        self.frame.update()
+        self._lbl_camara_estado.configure(text="Iniciando cámara...", text_color="#3b82f6")
+        self.update()
 
         try:
             nombre = self._entry_nombre.get().strip()
@@ -371,55 +205,37 @@ class RegisterView:
             if encoding is not None:
                 self._encoding_capturado = encoding
                 exito, msg = self.service.actualizar_encoding(self._student_id_actual, encoding)
-                estado = f"✓ {msg}" if exito else f"✗ {msg}"
-                self._lbl_camara_estado.config(
-                    text=estado,
-                    fg=VERDE if exito else ROJO,
+                self._lbl_camara_estado.configure(
+                    text=f"✓ {msg}" if exito else f"✗ {msg}",
+                    text_color=COLOR_ACCENTO if exito else COLOR_PELIGRO
                 )
             else:
-                self._lbl_camara_estado.config(
-                    text="No se detectó ningún rostro. Intenta de nuevo.",
-                    fg=ROJO,
-                )
+                self._lbl_camara_estado.configure(text="No se detectó rostro. Intente de nuevo.", text_color=COLOR_PELIGRO)
         except Exception as e:
-            self._lbl_camara_estado.config(text=f"Error: {str(e)}", fg=ROJO)
-
-    def _volver(self):
-        self.frame.destroy()
-        self.on_volver()
-
-    # ── Helpers ──────────────────────────────────────────────────────────────
+            self._lbl_camara_estado.configure(text=f"Error: {str(e)}", text_color=COLOR_PELIGRO)
 
     def _cargar_cursos(self):
-        """Carga los cursos disponibles en el ComboBox."""
         try:
             cursos = self.service.obtener_cursos()
-            self._cursos_data = cursos   # [(id, nombre_curso, grupo), ...]
+            self._cursos_data = cursos
             opciones = [f"{c[1]} – {c[2]}" for c in cursos]
-            self._combo_curso["values"] = opciones
+            self._combo_curso.configure(values=opciones)
             if opciones:
                 self._combo_curso.set(opciones[0])
         except Exception:
             self._cursos_data = []
 
     def _get_id_curso_seleccionado(self) -> Optional[int]:
-        idx = self._combo_curso.current()
-        if idx >= 0 and self._cursos_data:
-            return self._cursos_data[idx][0]
+        texto_sel = self._combo_curso.get()
+        if hasattr(self, '_cursos_data'):
+            for c in self._cursos_data:
+                if f"{c[1]} – {c[2]}" == texto_sel:
+                    return c[0]
         return None
 
     def _set_estado(self, texto: str, error: bool = False):
-        self._lbl_estado.config(text=texto, fg=ROJO if error else VERDE)
+        self._lbl_estado.configure(text=texto, text_color=COLOR_PELIGRO if error else COLOR_ACCENTO)
 
-    def _limpiar_formulario(self):
-        for attr, ph in [
-            ("_entry_nombre",        "Ej: Juan Pérez López"),
-            ("_entry_identificacion","Ej: 12345678"),
-        ]:
-            entry = getattr(self, attr)
-            entry.delete(0, "end")
-            entry.insert(0, ph)
-            entry.config(fg=GRIS_ICONO)
-        self._combo_curso.set("Selecciona un curso…")
-        self._dibujar_icono_usuario()
-        self._lbl_camara_estado.config(text="")
+    def _volver(self):
+        self.destroy()
+        self.on_volver()

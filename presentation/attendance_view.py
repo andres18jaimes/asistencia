@@ -1,206 +1,182 @@
-"""
-presentation/attendance_view.py
-
-Vista de Toma de Asistencia.
-Permite seleccionar un curso, iniciar el reconocimiento facial y
-ver los registros del día.
-"""
-
-import tkinter as tk
+import customtkinter as ctk
 from tkinter import ttk, messagebox
-from typing import Callable, Optional
+from typing import Callable
 from datetime import date
 
-from infrastructure.database.db_manager import DatabaseManager
-from infrastructure.database.student_repo import StudentRepository
-from infrastructure.recognition.face_engine import reconocer_y_registrar
+# Configuración de colores modernos (Slate & Emerald)
+COLOR_FONDO = "#0f172a"  # Azul muy oscuro
+COLOR_PANEL = "#1e293b"  # Azul grisáceo
+COLOR_ACCENTO = "#10b981" # Verde esmeralda (Éxito)
+COLOR_BOTON_NORMAL = "#3b82f6" # Azul moderno
 
-# Paleta de colores consistente
-AZUL_HEADER  = "#4A7BA7"
-AZUL_BOTON   = "#5B9BD5"
-VERDE        = "#4CAF50"
-ROJO         = "#E53935"
-GRIS_FONDO   = "#F0F0F0"
-GRIS_PANEL   = "#FFFFFF"
-TEXTO_DARK   = "#333333"
-TEXTO_LABEL  = "#555555"
-FUENTE       = "Courier"
-
-
-class AttendanceView:
+class AttendanceView(ctk.CTkFrame):
     def __init__(
         self,
-        parent: tk.Widget,
+        parent: ctk.CTk,
         profesor_id: int,
-        db_manager: DatabaseManager,
+        db_manager,
         on_volver: Callable,
     ):
+        # Heredamos de CTKFrame para que sea un componente moderno
+        super().__init__(parent, fg_color=COLOR_FONDO)
+        
         self.parent = parent
         self.profesor_id = profesor_id
         self.db = db_manager
         self.on_volver = on_volver
+        self.pack(fill="both", expand=True)
 
-        self._build()
+        self._build_ui()
         self._cargar_cursos()
         self._cargar_asistencias_hoy()
 
-    # ── Construcción de UI ──────────────────────────────────────────────────
-    def _build(self):
-        self.frame = tk.Frame(self.parent, bg=GRIS_FONDO)
-        self.frame.pack(fill="both", expand=True)
+    def _build_ui(self):
+        # ── HEADER MODERNO ──
+        self.header = ctk.CTkFrame(self, height=70, corner_radius=0, fg_color=COLOR_PANEL)
+        self.header.pack(fill="x", side="top")
 
-        # Header
-        header = tk.Frame(self.frame, bg=AZUL_HEADER, height=52)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-
-        btn_volver = tk.Button(
-            header,
-            text="← Volver",
-            font=(FUENTE, 11, "bold"),
-            bg=AZUL_HEADER,
-            fg="white",
-            bd=0,
-            activebackground="#3a6a96",
-            activeforeground="white",
-            cursor="hand2",
-            padx=14,
-            command=self._volver,
+        self.btn_volver = ctk.CTkButton(
+            self.header, 
+            text="← Volver", 
+            width=100,
+            fg_color="transparent",
+            hover_color="#334155",
+            font=("Segoe UI", 14, "bold"),
+            command=self._volver
         )
-        btn_volver.pack(side="left", pady=10)
+        self.btn_volver.pack(side="left", padx=20, pady=15)
 
-        tk.Label(
-            header,
-            text="Toma de Asistencia",
-            font=(FUENTE, 14, "bold"),
-            bg=AZUL_HEADER,
-            fg="white",
-        ).pack(side="left", pady=10)
+        self.titulo = ctk.CTkLabel(
+            self.header, 
+            text="Toma de Asistencia Facial", 
+            font=("Segoe UI", 20, "bold"),
+            text_color="#f8fafc"
+        )
+        self.titulo.pack(side="left", padx=10)
 
-        # Cuerpo
-        body = tk.Frame(self.frame, bg=GRIS_FONDO)
-        body.pack(fill="both", expand=True, padx=30, pady=20)
+        # ── CUERPO PRINCIPAL ──
+        self.container = ctk.CTkFrame(self, fg_color="transparent")
+        self.container.pack(fill="both", expand=True, padx=40, pady=30)
 
-        # Panel superior: selección de curso y botón
-        panel_top = tk.Frame(body, bg=GRIS_PANEL, bd=1, relief="solid")
-        panel_top.pack(fill="x", pady=(0, 12))
+        # Panel Superior: Controles
+        self.panel_controles = ctk.CTkFrame(self.container, fg_color=COLOR_PANEL, corner_radius=15, border_width=1, border_color="#334155")
+        self.panel_controles.pack(fill="x", pady=(0, 20), ipady=15)
 
-        tk.Label(
-            panel_top,
-            text="Curso:",
-            font=(FUENTE, 10),
-            bg=GRIS_PANEL,
-            fg=TEXTO_LABEL,
-        ).pack(side="left", padx=(20, 6), pady=10)
+        # Selección de Curso
+        label_curso = ctk.CTkLabel(self.panel_controles, text="Curso Activo:", font=("Segoe UI", 13, "bold"))
+        label_curso.pack(side="left", padx=(25, 10))
 
-        self._combo_curso = ttk.Combobox(
-            panel_top,
+        self._combo_curso = ctk.CTkComboBox(
+            self.panel_controles, 
+            width=250, 
+            values=[], 
             state="readonly",
-            font=(FUENTE, 10),
-            width=30,
+            font=("Segoe UI", 13),
+            fg_color="#0f172a"
         )
-        self._combo_curso.pack(side="left", pady=10, padx=(0, 20))
+        self._combo_curso.pack(side="left", padx=10)
 
-        self._btn_iniciar = tk.Button(
-            panel_top,
-            text="▶  Iniciar Captura de Asistencia",
-            font=(FUENTE, 11, "bold"),
-            bg=AZUL_BOTON,
-            fg="white",
-            bd=0,
-            padx=18,
-            pady=10,
-            cursor="hand2",
-            activebackground="#3a7ab5",
-            activeforeground="white",
-            command=self._iniciar_captura,
+        # Botón de Inicio con Estilo
+        self._btn_iniciar = ctk.CTkButton(
+            self.panel_controles,
+            text="▶  INICIAR RECONOCIMIENTO",
+            font=("Segoe UI", 14, "bold"),
+            fg_color=COLOR_BOTON_NORMAL,
+            hover_color="#2563eb",
+            height=45,
+            corner_radius=10,
+            command=self._iniciar_captura
         )
-        self._btn_iniciar.pack(side="left", pady=10, padx=(0, 20))
+        self._btn_iniciar.pack(side="left", padx=30)
 
-        self._lbl_estado = tk.Label(
-            panel_top,
-            text="",
-            font=(FUENTE, 9),
-            bg=GRIS_PANEL,
-            fg=TEXTO_DARK,
+        self._lbl_estado = ctk.CTkLabel(self.panel_controles, text="Listo", text_color="#94a3b8")
+        self._lbl_estado.pack(side="left", padx=10)
+
+        # ── TABLA DE ASISTENCIAS (TREEVIEW ESTILIZADO) ──
+        # Nota: TTK Treeview sigue siendo necesario, pero le aplicamos un tema oscuro
+        self.panel_tabla = ctk.CTkFrame(self.container, fg_color=COLOR_PANEL, corner_radius=15, border_width=1, border_color="#334155")
+        self.panel_tabla.pack(fill="both", expand=True)
+
+        ctk.CTkLabel(self.panel_tabla, text="Registros de hoy", font=("Segoe UI", 16, "bold"), text_color=COLOR_ACCENTO).pack(anchor="w", padx=25, pady=(20, 10))
+
+        # Estilo para que el Treeview se vea oscuro
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Treeview", 
+            background=COLOR_PANEL, 
+            foreground="white", 
+            fieldbackground=COLOR_PANEL, 
+            borderwidth=0,
+            rowheight=35,
+            font=("Segoe UI", 11)
         )
-        self._lbl_estado.pack(side="left", pady=10)
+        style.map("Treeview", background=[('selected', COLOR_BOTON_NORMAL)])
+        style.configure("Treeview.Heading", background="#334155", foreground="white", relief="flat", font=("Segoe UI", 12, "bold"))
 
-        # Panel inferior: tabla de asistencias de hoy
-        panel_bottom = tk.Frame(body, bg=GRIS_PANEL, bd=1, relief="solid")
-        panel_bottom.pack(fill="both", expand=True)
-
-        tk.Label(
-            panel_bottom,
-            text="Asistencias de hoy",
-            font=(FUENTE, 12, "bold"),
-            bg=GRIS_PANEL,
-            fg=TEXTO_DARK,
-        ).pack(anchor="w", padx=20, pady=(14, 4))
-
-        ttk.Separator(panel_bottom, orient="horizontal").pack(fill="x", padx=20, pady=(0, 8))
-
-        # Treeview
         columnas = ("nombre", "hora", "tipo")
-        self._tree = ttk.Treeview(panel_bottom, columns=columnas, show="headings", height=12)
+        self._tree = ttk.Treeview(self.panel_tabla, columns=columnas, show="headings")
         self._tree.heading("nombre", text="Estudiante")
-        self._tree.heading("hora", text="Hora")
-        self._tree.heading("tipo", text="Tipo")
-        self._tree.column("nombre", width=220)
-        self._tree.column("hora", width=100)
-        self._tree.column("tipo", width=100)
+        self._tree.heading("hora", text="Hora de Entrada")
+        self._tree.heading("tipo", text="Método")
+        
+        self._tree.column("nombre", width=350)
+        self._tree.column("hora", width=150, anchor="center")
+        self._tree.column("tipo", width=150, anchor="center")
 
-        scrollbar = ttk.Scrollbar(panel_bottom, orient="vertical", command=self._tree.yview)
-        self._tree.configure(yscrollcommand=scrollbar.set)
+        self._tree.pack(fill="both", expand=True, padx=25, pady=(0, 25))
 
-        self._tree.pack(side="left", fill="both", expand=True, padx=(20, 0), pady=(0, 20))
-        scrollbar.pack(side="right", fill="y", padx=(0, 20), pady=(0, 20))
+    # ── MÉTODOS DE LÓGICA (Manteniendo tu estructura original) ──
 
-    # ── Lógica ──────────────────────────────────────────────────────────────
     def _cargar_cursos(self):
+        from infrastructure.database.student_repo import StudentRepository
         repo = StudentRepository(self.db)
         cursos = repo.obtener_cursos(self.profesor_id)
-        self._cursos_data = cursos  # [(id, nombre_curso, grupo), ...]
+        self._cursos_data = cursos
         opciones = [f"{c[1]} – {c[2]}" for c in cursos]
-        self._combo_curso["values"] = opciones
+        self._combo_curso.configure(values=opciones)
         if opciones:
             self._combo_curso.set(opciones[0])
 
     def _cargar_asistencias_hoy(self):
-        """Limpia la tabla y carga asistencias del día para el curso seleccionado."""
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        idx = self._combo_curso.current()
-        if idx < 0 or not self._cursos_data:
+        idx_text = self._combo_curso.get()
+        if not idx_text or not hasattr(self, '_cursos_data'):
             return
-        id_curso = self._cursos_data[idx][0]
-        hoy = date.today().isoformat()
 
+        # Buscamos el ID del curso basándonos en el texto seleccionado
+        id_curso = next((c[0] for c in self._cursos_data if f"{c[1]} – {c[2]}" == idx_text), None)
+        if not id_curso: return
+
+        hoy = date.today().isoformat()
         from application.attendance_service import AttendanceService
         svc = AttendanceService(self.db)
         registros = svc.listar_por_curso(id_curso, fecha=hoy)
         for r in registros:
-            self._tree.insert("", "end", values=(r["nombre_estudiante"], r["hora"], r["tipo"]))
+            self._tree.insert("", "end", values=(r["nombre_estudiante"], r["hora"], r["tipo"].capitalize()))
 
     def _iniciar_captura(self):
-        idx = self._combo_curso.current()
-        if idx < 0:
-            messagebox.showwarning("Aviso", "Selecciona un curso primero.")
-            return
+        # Desactivar botón mientras captura para evitar doble proceso
+        self._btn_iniciar.configure(state="disabled", text="CÁMARA ACTIVA...")
+        self._lbl_estado.configure(text="Reconociendo...", text_color=COLOR_ACCENTO)
+        self.update()
 
-        id_curso = self._cursos_data[idx][0]
-        self._lbl_estado.config(text="Reconocimiento en curso...")
-
-        # Ejecutar el reconocimiento (bloquea la UI hasta que se cierre la cámara)
         try:
+            from infrastructure.recognition.face_engine import reconocer_y_registrar
+            idx_text = self._combo_curso.get()
+            id_curso = next((c[0] for c in self._cursos_data if f"{c[1]} – {c[2]}" == idx_text), None)
+            
+            # Tu lógica de reconocimiento facial
             registrados = reconocer_y_registrar(id_curso, self.db)
-            self._lbl_estado.config(text=f"Captura finalizada. {len(registrados)} nuevos registros.")
+            
+            self._lbl_estado.configure(text=f"¡Éxito! {len(registrados)} nuevos registros.", text_color=COLOR_ACCENTO)
             self._cargar_asistencias_hoy()
         except Exception as e:
-            self._lbl_estado.config(text=f"Error: {str(e)}")
-            messagebox.showerror("Error", f"Ocurrió un error durante el reconocimiento:\n{e}")
+            messagebox.showerror("Error de Cámara", f"No se pudo iniciar el reconocimiento: {e}")
+        finally:
+            self._btn_iniciar.configure(state="normal", text="▶  INICIAR RECONOCIMIENTO")
 
     def _volver(self):
-        self.frame.destroy()
+        self.destroy()
         self.on_volver()
