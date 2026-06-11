@@ -16,23 +16,24 @@ class RegisterView(ctk.CTkFrame):
         student_service,
         profesor_id: int,
         on_volver: Callable,
+        curso_id: int = None,
+        nombre_curso: str = None,
     ):
-        # Heredamos de CTKFrame
         super().__init__(parent, fg_color=COLOR_FONDO)
-        
+
         self.parent = parent
         self.service = student_service
         self.profesor_id = profesor_id
+        self.curso_id = curso_id
+        self.nombre_curso = nombre_curso
         self.on_volver = on_volver
-        
-        # Intentamos importar tu CameraService (asumo que se maneja igual interno)
+
         try:
             from application.camera_service import CameraService
             self.camera_service = CameraService()
         except Exception:
             self.camera_service = None
 
-        # Estado interno
         self._student_id_actual: Optional[int] = None
         self._encoding_capturado: Optional[bytes] = None
 
@@ -77,9 +78,39 @@ class RegisterView(ctk.CTkFrame):
         self._entry_identificacion = self._crear_campo(self.panel_datos, "Documento de Identidad", "Ej: 10023456")
 
         # Selector de Curso (Combo moderno)
-        ctk.CTkLabel(self.panel_datos, text="Asignar a Curso / Grupo:", font=("Segoe UI", 13, "bold"), text_color="#94a3b8").pack(anchor="w", padx=30, pady=(15, 5))
-        self._combo_curso = ctk.CTkComboBox(self.panel_datos, state="readonly", font=("Segoe UI", 13), fg_color="#0f172a", width=340, height=40)
-        self._combo_curso.pack(anchor="w", padx=30, pady=(0, 15))
+        # Curso actual
+        ctk.CTkLabel(
+            self.panel_datos,
+            text="Curso actual:",
+            font=("Segoe UI", 13, "bold"),
+            text_color="#94a3b8",
+        ).pack(anchor="w", padx=30, pady=(15, 5))
+
+        if self.curso_id is not None:
+            self._curso_label = ctk.CTkLabel(
+                self.panel_datos,
+                text=self.nombre_curso if self.nombre_curso else f"Curso ID {self.curso_id}",
+                font=("Segoe UI", 13, "bold"),
+                text_color="#f8fafc",
+                fg_color="#0f172a",
+                corner_radius=8,
+                height=40,
+                anchor="w",
+            )
+            self._curso_label.pack(anchor="w", padx=30, fill="x", pady=(0, 15))
+
+            self._combo_curso = None
+
+        else:
+            self._combo_curso = ctk.CTkComboBox(
+                self.panel_datos,
+                state="readonly",
+                font=("Segoe UI", 13),
+                fg_color="#0f172a",
+                width=340,
+                height=40,
+            )
+            self._combo_curso.pack(anchor="w", padx=30, pady=(0, 15))
 
         # Botones de Acción inferiores
         self.btn_frame = ctk.CTkFrame(self.panel_datos, fg_color="transparent")
@@ -115,6 +146,39 @@ class RegisterView(ctk.CTkFrame):
         self._canvas_preview.pack(padx=30, pady=5)
         self._dibujar_icono_usuario()
 
+        ctk.CTkLabel(
+            self.panel_biometrico,
+            text="Fuente de cámara:",
+            font=("Segoe UI", 13, "bold"),
+            text_color="#94a3b8"
+        ).pack(anchor="w", padx=30, pady=(18, 5))
+
+        self._combo_camara = ctk.CTkComboBox(
+            self.panel_biometrico,
+            values=[
+                "Cámara del computador (0)",
+                "Cámara secundaria / DroidCam (1)",
+                "Celular por URL"
+            ],
+            state="readonly",
+            font=("Segoe UI", 13),
+            fg_color="#0f172a",
+            width=320,
+            height=38
+        )
+        self._combo_camara.pack(padx=30, pady=(0, 8))
+        self._combo_camara.set("Cámara del computador (0)")
+
+        self._entry_url_camara = ctk.CTkEntry(
+            self.panel_biometrico,
+            placeholder_text="URL del celular: http://192.168.1.15:8080/video",
+            font=("Segoe UI", 12),
+            fg_color="#0f172a",
+            border_color="#334155",
+            width=320,
+            height=38
+        )
+        self._entry_url_camara.pack(padx=30, pady=(0, 12))
         # Botón para activar cámara
         self.btn_camara = ctk.CTkButton(
             self.panel_biometrico, text="📷  Escanear Rostro de Estudiante", font=("Segoe UI", 14, "bold"),
@@ -147,6 +211,22 @@ class RegisterView(ctk.CTkFrame):
 
     # ── MÉTODOS DE NEGOCIO RE-ACOPLADOS ──
 
+    def _obtener_fuente_camara(self):
+        opcion = self._combo_camara.get()
+
+        if "(0)" in opcion:
+            return 0
+
+        if "(1)" in opcion:
+            return 1
+
+        if "URL" in opcion:
+            url = self._entry_url_camara.get().strip()
+            if not url:
+                raise ValueError("Ingrese la URL de la cámara del celular.")
+            return url
+
+        return 0
     def _guardar(self):
         nombre = self._entry_nombre.get().strip()
         identificacion = self._entry_identificacion.get().strip()
@@ -155,18 +235,22 @@ class RegisterView(ctk.CTkFrame):
             self._set_estado("⚠ El nombre es obligatorio.", error=True)
             return
 
-        # Conseguir ID del curso seleccionado del combo
         id_curso = self._get_id_curso_seleccionado()
+
+        if id_curso is None:
+            self._set_estado("⚠ No se encontró el curso actual.", error=True)
+            return
 
         exito, mensaje, student_id = self.service.registrar_estudiante(
             nombre=nombre,
+            identificacion=identificacion,
             id_curso=id_curso,
             encoding_facial=self._encoding_capturado,
         )
 
         if exito:
             self._student_id_actual = student_id
-            self._set_estado(f"✓ {mensaje}", error=False)
+            self._set_estado(f"✓ {mensaje}. Ahora puede escanear el rostro.", error=False)
         else:
             self._set_estado(f"✗ {mensaje}", error=True)
 
@@ -200,7 +284,8 @@ class RegisterView(ctk.CTkFrame):
 
         try:
             nombre = self._entry_nombre.get().strip()
-            encoding = self.camera_service.capture_faces(nombre)
+            camera_source = self._obtener_fuente_camara()
+            encoding = self.camera_service.capture_faces(nombre, camera_source=camera_source)
 
             if encoding is not None:
                 self._encoding_capturado = encoding
@@ -215,22 +300,42 @@ class RegisterView(ctk.CTkFrame):
             self._lbl_camara_estado.configure(text=f"Error: {str(e)}", text_color=COLOR_PELIGRO)
 
     def _cargar_cursos(self):
-        try:
-            cursos = self.service.obtener_cursos()
-            self._cursos_data = cursos
-            opciones = [f"{c[1]} – {c[2]}" for c in cursos]
-            self._combo_curso.configure(values=opciones)
-            if opciones:
-                self._combo_curso.set(opciones[0])
-        except Exception:
+        if self.curso_id is not None:
             self._cursos_data = []
+            return
+
+        try:
+            cursos = self.service.obtener_cursos(self.profesor_id)
+            self._cursos_data = cursos
+
+            opciones = [f"{c[1]} – {c[2]}" for c in cursos]
+
+            if self._combo_curso is not None:
+                self._combo_curso.configure(values=opciones)
+
+                if opciones:
+                    self._combo_curso.set(opciones[0])
+                else:
+                    self._combo_curso.set("Sin cursos disponibles")
+
+        except Exception as e:
+            self._cursos_data = []
+            self._set_estado(f"Error al cargar cursos: {e}", error=True)
 
     def _get_id_curso_seleccionado(self) -> Optional[int]:
+        if self.curso_id is not None:
+            return self.curso_id
+
+        if self._combo_curso is None:
+            return None
+
         texto_sel = self._combo_curso.get()
-        if hasattr(self, '_cursos_data'):
+
+        if hasattr(self, "_cursos_data"):
             for c in self._cursos_data:
                 if f"{c[1]} – {c[2]}" == texto_sel:
                     return c[0]
+
         return None
 
     def _set_estado(self, texto: str, error: bool = False):

@@ -17,6 +17,7 @@ from infrastructure.database.db_manager import DatabaseManager
 from infrastructure.database.student_repo import StudentRepository
 from application.attendance_service import AttendanceService
 from application.camera_service import CameraService
+from config.settings import CAMERA_SOURCE
 
 
 # Ruta absoluta al clasificador Haar, relativa a este archivo
@@ -29,6 +30,7 @@ def reconocer_y_registrar(
     id_curso: int,
     db_manager: DatabaseManager,
     callback_progreso=None,
+    camera_source=None,
 ) -> List[Tuple[int, str]]:
     """
     Abre la cámara, reconoce estudiantes del curso dado y registra su asistencia.
@@ -74,7 +76,11 @@ def reconocer_y_registrar(
     resultados_ventana: List[Tuple[int, str]] = []
 
     # 4. Cámara
-    camara = cv2.VideoCapture(0)
+    from config.settings import CAMERA_SOURCE
+
+    source = CAMERA_SOURCE if camera_source is None else camera_source
+    camara = cv2.VideoCapture(source)
+
     if not camara.isOpened():
         print("[FaceEngine] No se pudo abrir la cámara.")
         return []
