@@ -153,6 +153,23 @@ class RegisterView(ctk.CTkFrame):
             text_color="#94a3b8"
         ).pack(anchor="w", padx=30, pady=(18, 5))
 
+        self._combo_rotacion = ctk.CTkComboBox(
+            self.panel_biometrico,
+            values=[
+                "Sin rotación",
+                "Girar 90° derecha",
+                "Girar 180°",
+                "Girar 90° izquierda"
+            ],
+            state="readonly",
+            font=("Segoe UI", 13),
+            fg_color="#0f172a",
+            width=320,
+            height=38
+        )
+        self._combo_rotacion.pack(padx=30, pady=(0, 10))
+        self._combo_rotacion.set("Sin rotación")
+
         self._combo_camara = ctk.CTkComboBox(
             self.panel_biometrico,
             values=[
@@ -227,6 +244,20 @@ class RegisterView(ctk.CTkFrame):
             return url
 
         return 0
+    
+    def _obtener_rotacion_camara(self):
+        opcion = self._combo_rotacion.get()
+
+        if "90° derecha" in opcion:
+            return 90
+
+        if "180" in opcion:
+            return 180
+
+        if "90° izquierda" in opcion:
+            return 270
+
+        return 0
     def _guardar(self):
         nombre = self._entry_nombre.get().strip()
         identificacion = self._entry_identificacion.get().strip()
@@ -285,7 +316,13 @@ class RegisterView(ctk.CTkFrame):
         try:
             nombre = self._entry_nombre.get().strip()
             camera_source = self._obtener_fuente_camara()
-            encoding = self.camera_service.capture_faces(nombre, camera_source=camera_source)
+            camera_rotation = self._obtener_rotacion_camara()
+
+            encoding = self.camera_service.capture_faces(
+                nombre,
+                camera_source=camera_source,
+                camera_rotation=camera_rotation
+            )
 
             if encoding is not None:
                 self._encoding_capturado = encoding
